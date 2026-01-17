@@ -1,0 +1,72 @@
+name: CI - KarsaJobs Backend
+
+on:
+  push:
+    branches: [ "karsajobs" ]
+  pull_request:
+    branches: [ "karsajobs" ]
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  lint-dockerfile:
+    name: lint-dockerfile
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Lint Dockerfile with Hadolint (via Docker)
+        run: |
+          # Jalankan hadolint tanpa install binary (lebih simple & konsisten)
+          docker run --rm -i hadolint/hadolint < Dockerfile
+
+  test-app:
+    name: test-app
+    runs-on: ubuntu-latest
+    needs: lint-dockerfile
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Run unit tests
+        run: |
+          # Perintah WAJIB sesuai ketentuan Dicoding
+          go test -v -short --count=1 $(go list ./...)
+
+  build-app-karsajobs:
+    name: build-app-karsajobs
+    runs-on: ubuntu-latest
+    needs: test-app
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push image (backend)
+        if: github.event_name == 'push'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ghcr.io/mfaiqrofifi/karsajobs:latest
+            ghcr.io/mfaiqrofifi/karsajobs:${{ github.sha }}
+
